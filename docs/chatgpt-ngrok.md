@@ -8,7 +8,7 @@ ChatGPT runs in the cloud and can only reach servers on the internet, while the 
 > **A tunnel exposes the server to the internet, and the server has no password.** Anyone who can reach it can control Blockbench and read and write files at any path Blockbench can access. Follow the steps below exactly: the secret address in step 2 is what protects you. Treat that address like a password, and close the tunnel when you finish.
 
 > [!NOTE]
-> This guide follows the current OpenAI and ngrok documentation, but the full path through ngrok and ChatGPT has not been tested yet. If a step behaves differently, please [open an issue](https://github.com/sikorafranciszek/blockbench-mcp-addon/issues).
+> The tunnel was tested on ngrok's free plan with the official MCP client, including rejected requests and work on a model. The final connection from ChatGPT itself has not been tested yet. If a step behaves differently, please [open an issue](https://github.com/sikorafranciszek/blockbench-mcp-addon/issues).
 
 ## What you need
 
@@ -22,6 +22,12 @@ On Windows:
 
 ```bash
 winget install Ngrok.Ngrok
+```
+
+Winget can install an old version that lacks the options used here, so update it right away:
+
+```bash
+ngrok update
 ```
 
 Other systems can use the [ngrok downloads page](https://ngrok.com/download). Then add the token from your [ngrok dashboard](https://dashboard.ngrok.com/get-started/your-authtoken):
@@ -46,7 +52,7 @@ On macOS or Linux:
 openssl rand -hex 16
 ```
 
-In the repository root, copy [`docs/ngrok-policy.example.yml`](ngrok-policy.example.yml) to `ngrok-policy.yml`. Replace `REPLACE_WITH_SECRET` with your value in both places. Git ignores this file, so the secret will not be committed.
+In the repository root, copy [`docs/ngrok-policy.example.yml`](ngrok-policy.example.yml) to `ngrok-policy.yml`. Replace `REPLACE_WITH_SECRET` with your value. Git ignores this file, so the secret will not be committed.
 
 If you changed the plugin's port, also update `host` in the policy and the port in the next command.
 
@@ -61,7 +67,7 @@ ngrok http 127.0.0.1:3939 --traffic-policy-file ngrok-policy.yml
 ngrok shows a `Forwarding` line with your public domain. Your server address is that domain plus the secret:
 
 ```text
-https://YOUR-DOMAIN/YOUR_SECRET/mcp
+https://YOUR-DOMAIN/mcp?key=YOUR_SECRET
 ```
 
 ## 4. Check the tunnel
@@ -71,7 +77,7 @@ Use `curl.exe` instead of `curl` in Windows PowerShell.
 The secret address should return **405**. That is correct: the request reached the plugin, which accepts only POST on this address.
 
 ```bash
-curl -i https://YOUR-DOMAIN/YOUR_SECRET/mcp
+curl -i "https://YOUR-DOMAIN/mcp?key=YOUR_SECRET"
 ```
 
 An address without the secret should return **404**. If it reaches the plugin instead, stop the tunnel and check your policy file.
@@ -110,7 +116,7 @@ If the secret address leaks, change the value in `ngrok-policy.yml`, restart ngr
 
 ## Staying safe
 
-- Keep the `MCP: Allow run_script` setting **off**. With it on, a leaked address would let others run code on your computer.
+- Keep the `MCP: Allow run_script` setting **off**, and check it before you start the tunnel. With it on, a leaked address would let others run code on your computer.
 - Close the tunnel whenever you are not using it.
 - Read each confirmation before approving it, especially for tools that save or export files. A web page or file that ChatGPT reads could try to trick it into misusing them.
 - Never put the address in a screenshot, a repository or a public chat.
@@ -120,9 +126,13 @@ If the secret address leaks, change the value in `ngrok-policy.yml`, restart ngr
 
 | Problem | What to do |
 | --- | --- |
-| ngrok returns **403** instead of 405 in step 4 | The request reached the plugin, but the host in `ngrok-policy.yml` does not match its address and port. |
+| ngrok reports `unknown flag: --traffic-policy-file` or `unknown version '3'` | Your ngrok is too old. Run `ngrok update`. If that reports the version error too, install the current version from the [downloads page](https://ngrok.com/download). |
+| ngrok reports `ERR_NGROK_2263` | Your policy uses a paid feature. The example policy uses only actions that the free plan accepts, while `url-rewrite` and `remove-headers` need a paid plan. |
+| Step 4 returns **403** instead of 405 | The request reached the plugin, but the host in `ngrok-policy.yml` does not match its address and port. |
+| ChatGPT reports **403** with `Only local non-browser clients may connect` | ChatGPT sent an `Origin` header, which the plugin refuses. This has not been seen in testing, so please [open an issue](https://github.com/sikorafranciszek/blockbench-mcp-addon/issues). |
+| ChatGPT reports **404** | It may have changed the address. The policy accepts only the exact `key=YOUR_SECRET` query, so please check the URL you entered. |
 | ngrok reports an error reaching the server, or returns 502 | Blockbench is closed, or the plugin is not running. Check `Tools > MCP Server`. |
-| Both addresses return **404** | The secret in the policy file and the one in the address differ. Check that you replaced it in both places. |
+| Both addresses return **404** | The secret in the policy file and the one in the address differ. Check that they match. |
 | ChatGPT receives an ngrok warning page (`ERR_NGROK_6024`) | Free accounts show this page to browsers. It should not affect API traffic, but if it does, a paid ngrok plan removes it. |
 | ChatGPT does not show new tools | After updating the plugin, open the plugin's details page in ChatGPT and refresh it. |
 | The tunnel stops working | The free ngrok plan has [monthly limits](https://ngrok.com/docs/pricing-limits/free-plan-limits). Images use up the bandwidth limit fastest. |
