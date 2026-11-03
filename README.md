@@ -62,6 +62,8 @@ Clients that only support stdio, such as a local Claude Desktop configuration, u
 }
 ```
 
+ChatGPT runs in the cloud, so it needs a tunnel. See the [ChatGPT and ngrok guide](docs/chatgpt-ngrok.md).
+
 **4. Ask for something.**
 
 > Make a penguin in Bedrock format with a Minecraft-style texture and a walk animation. Check the preview after each stage.
@@ -103,6 +105,7 @@ All formats in your Blockbench install work, including:
 - There is no password. Any program running on your computer can connect.
 - Connected clients can read and write files at the paths they pass, but an existing file is only overwritten when the call sets `overwrite: true`.
 - `run_script` runs arbitrary JavaScript with access to your files, so it is off by default. Turn it on with the `MCP: Allow run_script` setting only if you trust the connected client.
+- A tunnel such as ngrok exposes the server to the internet. Do not run one without the protection in the [ChatGPT guide](docs/chatgpt-ngrok.md).
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability.
 

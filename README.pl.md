@@ -4,8 +4,10 @@
 
 **Asystent AI buduje, maluje i animuje modele do Minecrafta w Blockbench i widzi, co robi.**
 
+[![CI](https://github.com/sikorafranciszek/blockbench-mcp-addon/actions/workflows/ci.yml/badge.svg)](https://github.com/sikorafranciszek/blockbench-mcp-addon/actions/workflows/ci.yml)
 [![Licencja: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Blockbench 5.2+](https://img.shields.io/badge/Blockbench-5.2%2B-3e90ff.svg)](https://www.blockbench.net/)
+[![MCP](https://img.shields.io/badge/protocol-MCP-black.svg)](https://modelcontextprotocol.io/)
 
 [English version](README.md)
 
@@ -17,7 +19,7 @@
 
 ## Dlaczego
 
-Wtyczka działa wewnątrz Blockbench, więc podłączony klient AI pracuje na Twoim otwartym projekcie, na żywo na ekranie.
+Wtyczka działa wewnątrz Blockbench, więc podłączony klient AI pracuje na Twoim otwartym projekcie, na żywo na ekranie. Trzy rzeczy sprawiają, że nadaje się to do prawdziwego modelowania:
 
 - **AI widzi efekty.** `capture_preview` renderuje dowolną stronę lub klatkę animacji bez przesuwania Twojej kamery, więc AI może sprawdzać swoją pracę i poprawiać błędy.
 - **AI pracuje wysokopoziomowo.** Jedno wywołanie tworzy całe drzewo kości i kostek, a `paint_faces` maluje ścianę w jej własnych pikselach, bez liczenia UV.
@@ -60,6 +62,8 @@ Klienci obsługujący tylko stdio, na przykład lokalna konfiguracja Claude Desk
 }
 ```
 
+ChatGPT działa w chmurze, więc potrzebuje tunelu. Zobacz [instrukcję dla ChatGPT i ngrok](docs/chatgpt-ngrok.pl.md).
+
 **4. Poproś o coś.**
 
 > Zrób pingwina w formacie Bedrock, z teksturą w stylu Minecrafta i animacją chodu. Sprawdzaj podgląd po każdym etapie.
@@ -77,7 +81,23 @@ Adres serwera i historię działań AI znajdziesz w `Tools > MCP Server`.
 | **Projekty** | `get_state`, `list_formats`, `new_project`, `update_project`, `open_file`, `switch_project`, `close_project`, `save_project`, `export_model`, `validate_model`, `undo`, `redo`, `dismiss_dialog` |
 | **Skrypty** (domyślnie wyłączone) | `run_script` |
 
-Obsługiwane są wszystkie formaty dostępne w Blockbench, m.in. bloki i przedmioty Java, moby Bedrock, skórki graczy, gotowe modele mobów i obiektów z Minecrafta do przemalowania, grafiki 2D oraz modele ogólne z eksportem do glTF, OBJ, FBX, Collada i STL.
+Najważniejsze możliwości:
+
+- `capture_preview` sam kadruje model i łączy kilka widoków w jeden opisany arkusz. Obsługuje też kamerę perspektywiczną i ortograficzną, tryby siatki i UV oraz pozy z dowolnej klatki animacji.
+- `add_elements` przyjmuje kostki, zagnieżdżone grupy i lokatory oraz siatki z surowej geometrii lub brył (kula, walec, stożek, torus, płaszczyzna).
+- `duplicate_elements` potrafi zrobić lustrzane odbicie kończyny i zamienić `left`/`right` w nazwie.
+- Operacje malowania to m.in. wypełnienie, prostokąt, linia, elipsa, gradient, szum, obraz i dokładne siatki pikseli.
+- `add_keyframes` przyjmuje liczby lub wyrażenia Molang.
+
+## Obsługiwane formaty
+
+Działają wszystkie formaty dostępne w Twoim Blockbench, m.in.:
+
+- **Java:** modele bloków i przedmiotów
+- **Bedrock:** moby i bloki, także z animacjami
+- **Gotowe modele do przemalowania:** skórki graczy oraz moby i obiekty z Minecrafta, takie jak creeper czy skrzynia
+- **Grafiki 2D:** ikony w stylu pixel art oraz tekstury bloków i przedmiotów
+- **Modele ogólne:** z eksportem do glTF, OBJ, FBX, Collada i STL
 
 ## Bezpieczeństwo
 
@@ -85,6 +105,9 @@ Obsługiwane są wszystkie formaty dostępne w Blockbench, m.in. bloki i przedmi
 - Serwer nie ma hasła. Może się z nim połączyć każdy program uruchomiony na Twoim komputerze.
 - Podłączony klient może czytać i zapisywać pliki pod podanymi ścieżkami, ale istniejący plik nadpisze tylko z `overwrite: true`.
 - `run_script` uruchamia dowolny JavaScript z dostępem do Twoich plików, dlatego jest domyślnie wyłączony. Włączaj ustawienie `MCP: Allow run_script` tylko wtedy, gdy ufasz podłączonemu klientowi.
+- Tunel, np. ngrok, wystawia serwer do internetu. Nie uruchamiaj go bez zabezpieczeń z [instrukcji dla ChatGPT](docs/chatgpt-ngrok.pl.md).
+
+Lukę w zabezpieczeniach zgłoś zgodnie z [SECURITY.md](SECURITY.md).
 
 ## Rozwiązywanie problemów
 
@@ -95,9 +118,41 @@ Obsługiwane są wszystkie formaty dostępne w Blockbench, m.in. bloki i przedmi
 | Narzędzie nie kończy pracy | W Blockbench może czekać otwarte okno. Wyniki narzędzi informują o tym, a `dismiss_dialog` je zamyka. |
 | `capture_window` pokazuje stary obraz | Okno Blockbench jest zasłonięte, więc się nie odświeża. `capture_preview` zawsze pokazuje stan aktualny. |
 
+## Jak to działa
+
+```mermaid
+flowchart LR
+    A[Klient MCP] -- HTTP --> C[Wtyczka w Blockbench]
+    B[Klient stdio] --> D[Most stdio] -- HTTP --> C
+    C --> E[Projekt na żywo: model, tekstury, animacje]
+    C -- wyrenderowane obrazy --> A
+```
+
+Wtyczki działają w procesie okna Blockbench, z pełnym dostępem do jego API (`Cube`, `Group`, `Texture`, `Canvas`, `Undo`). Blockbench nie udostępnia wtyczkom modułu `http`, więc wtyczka ma własny mały serwer HTTP/1.1 dla MCP Streamable HTTP, zbudowany na module `net`.
+
 ## Rozwój
 
-Więcej o architekturze i testach znajdziesz w [README po angielsku](README.md#how-it-works) i w [CONTRIBUTING.md](CONTRIBUTING.md).
+Nie ma etapu budowania: edytuj [`plugin/blockbench_mcp.js`](plugin/blockbench_mcp.js) i przeładuj wtyczkę w `Plik > Wtyczki...`.
+
+Sprawdzenie składni:
+
+```bash
+npm run check
+```
+
+Testy end-to-end wymagają uruchomionego Blockbench z wtyczką. Otwierają i zamykają własne karty projektów, a pliki zapisują tylko w `test/output`:
+
+```bash
+npm test
+```
+
+Budowa przykładowego modelu:
+
+```bash
+npm run demo
+```
+
+Szczegóły znajdziesz w [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licencja
 

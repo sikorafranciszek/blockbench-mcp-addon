@@ -18,3 +18,4 @@ Only the latest version is supported.
 - **Other programs on your computer:** the server has no password, so any local program can connect and use the tools.
 - **Your AI client:** a connected client can read and write files at any path the Blockbench process can reach. Prompt injection in content the AI reads could misuse this, so connect only clients you trust.
 - **`run_script`, when enabled:** it gives connected clients full access to Blockbench and your files.
+- **Tunnels:** a tunnel such as ngrok makes the server reachable from the internet and bypasses the checks above. Protect it as described in the [ChatGPT guide](docs/chatgpt-ngrok.md), and close it when you are not using it.

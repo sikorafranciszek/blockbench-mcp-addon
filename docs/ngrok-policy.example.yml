@@ -1,0 +1,29 @@
+# ngrok Traffic Policy for reaching the Blockbench MCP server through a tunnel.
+#
+# 1. Copy this file to ngrok-policy.yml in the repository root (git ignores that name).
+# 2. Replace REPLACE_WITH_SECRET with a long random value, in both places.
+# 3. If you changed the plugin's port, update the host value too.
+on_http_request:
+  # Everything except the secret address is refused, before it reaches Blockbench.
+  - expressions:
+      - "req.url.path != '/REPLACE_WITH_SECRET/mcp'"
+    actions:
+      - type: deny
+        config:
+          status_code: 404
+  - actions:
+      # The plugin only serves /mcp.
+      - type: url-rewrite
+        config:
+          from: "/REPLACE_WITH_SECRET/mcp"
+          to: "/mcp"
+      # The plugin rejects requests from websites and from unexpected hosts.
+      # The secret address replaces that protection for traffic from the tunnel.
+      - type: remove-headers
+        config:
+          headers:
+            - origin
+      - type: add-headers
+        config:
+          headers:
+            host: "127.0.0.1:3939"
