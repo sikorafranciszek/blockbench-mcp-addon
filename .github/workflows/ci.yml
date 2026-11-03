@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run check
+      - name: Bridge reports when Blockbench is not running
+        run: |
+          reply=$(echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_state"}}' | node bridge/stdio-bridge.mjs 3998)
+          echo "$reply"
+          echo "$reply" | grep -q 'not reachable'
