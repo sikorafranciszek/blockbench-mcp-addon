@@ -49,6 +49,13 @@ await step('browser origins and wrong methods are refused', async () => {
 	assert.equal((await fetch(URL_MCP)).status, 405);
 });
 
+await step('a wrong key does not replace the local checks', async () => {
+	for (const query of ['?key=wrong', '?key=', '?other=1']) {
+		const response = await fetch(URL_MCP + query, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' }, body: '{}' });
+		assert.equal(response.status, 403, query);
+	}
+});
+
 await step('tools/list hides run_script by default', async () => {
 	const { tools } = await rpc('tools/list');
 	assert.ok(tools.length >= 25, `only ${tools.length} tools`);

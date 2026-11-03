@@ -9,10 +9,13 @@
 	'use strict';
 
 	const PLUGIN_ID = 'blockbench_mcp';
-	const VERSION = '1.0.0';
+	const VERSION = '1.1.0';
 	const DEFAULT_PORT = 3939;
 	const MAX_BODY_BYTES = 64 * 1024 * 1024;
 	const TOOL_TIMEOUT_MS = 120000;
+	const REMOTE_KEY_STORAGE = 'mcp_remote_key';
+	const NGROK_AGENT_PORT = 4040;
+	const nodeCrypto = require('crypto');
 	const PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 
 	const INSTRUCTIONS = `You are controlling a live Blockbench window. Everything you do appears immediately on the user's screen, and every tool call is one undo step.
@@ -1945,6 +1948,37 @@ Pixel art tips: use a small palette, shade with 3-5 tones of each color, and add
 		}
 	}
 
+	// Remote clients reach the server through a tunnel, where Host and Origin cannot be trusted
+	// or predicted, so they prove themselves with this key instead.
+	function getRemoteKey() {
+		try {
+			return localStorage.getItem(REMOTE_KEY_STORAGE);
+		} catch (err) {
+			return null;
+		}
+	}
+
+	function createRemoteKey() {
+		const key = nodeCrypto.randomBytes(16).toString('hex');
+		localStorage.setItem(REMOTE_KEY_STORAGE, key);
+		return key;
+	}
+
+	function hasRemoteKey(target) {
+		const key = getRemoteKey();
+		if (!key) return false;
+		let given;
+		try {
+			given = new URL(target, 'http://127.0.0.1').searchParams.get('key');
+		} catch (err) {
+			return false;
+		}
+		if (!given) return false;
+		const expected = Buffer.from(key);
+		const received = Buffer.from(given);
+		return expected.length === received.length && nodeCrypto.timingSafeEqual(expected, received);
+	}
+
 	// Blocks web pages: a browser always sends Origin, and a rebound DNS name shows up in Host.
 	function isAllowedOrigin(headers, port) {
 		if (headers.origin) return false;
@@ -1953,8 +1987,8 @@ Pixel art tips: use a small palette, shade with 3-5 tones of each color, and add
 	}
 
 	async function handleRequest(socket, request, port) {
-		if (!isAllowedOrigin(request.headers, port)) {
-			return writeResponse(socket, 403, { error: 'Only local non-browser clients may connect.' });
+		if (!hasRemoteKey(request.target) && !isAllowedOrigin(request.headers, port)) {
+			return writeResponse(socket, 403, { error: 'Only local non-browser clients may connect, or remote clients with the key from Tools > MCP Server.' });
 		}
 		const path = request.target.split('?')[0];
 		if (path === '/health' && request.method === 'GET') {
@@ -2037,6 +2071,7 @@ Pixel art tips: use a small palette, shade with 3-5 tones of each color, and add
 	// ------------------------------------------------------------------ server lifecycle and UI
 
 	const status = { server: null, sockets: new Set(), port: null, error: null, log: [] };
+	let netModule = null;
 
 	function logActivity(text) {
 		const time = new Date().toLocaleTimeString();
@@ -2073,7 +2108,7 @@ Pixel art tips: use a small palette, shade with 3-5 tones of each color, and add
 	async function listen() {
 		await closeServer();
 		const port = Number(Settings.get('mcp_port')) || DEFAULT_PORT;
-		const net = require('net', {
+		const net = netModule = require('net', {
 			message: 'Runs the local MCP server that AI assistants connect to. It only listens on this computer (127.0.0.1).',
 			optional: false,
 		});
@@ -2102,30 +2137,106 @@ Pixel art tips: use a small palette, shade with 3-5 tones of each color, and add
 		});
 	}
 
-	function showStatusDialog() {
-		const url = `http://127.0.0.1:${status.port || Settings.get('mcp_port')}/mcp`;
-		const escape = (text) => String(text).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-		const state = status.server
-			? `<p style="color:var(--color-confirm)"><b>Running</b> at <code>${url}</code></p>`
-			: `<p style="color:var(--color-close)"><b>Stopped</b>${status.error ? ': ' + escape(status.error) : ''}</p>`;
-		new Dialog({
+	// Asks a running ngrok agent for this server's public address, so it can be shown ready to copy.
+	function findTunnelAddress(port) {
+		return new Promise((resolve) => {
+			if (!netModule) return resolve(null);
+			let response = '';
+			const socket = netModule.connect(NGROK_AGENT_PORT, '127.0.0.1');
+			const finish = (value) => {
+				socket.destroy();
+				resolve(value);
+			};
+			socket.setTimeout(500, () => finish(null));
+			socket.on('error', () => finish(null));
+			socket.on('connect', () => socket.write(`GET /api/tunnels HTTP/1.0\r\nHost: 127.0.0.1:${NGROK_AGENT_PORT}\r\n\r\n`));
+			socket.on('data', (chunk) => { response += chunk; });
+			socket.on('end', () => {
+				try {
+					const { tunnels } = JSON.parse(response.slice(response.indexOf('\r\n\r\n') + 4));
+					const tunnel = tunnels.find((t) => t.public_url.startsWith('https://') && String(t.config && t.config.addr).endsWith(`:${port}`));
+					finish(tunnel ? tunnel.public_url : null);
+				} catch (err) {
+					finish(null);
+				}
+			});
+		});
+	}
+
+	function copyRow(label, value) {
+		const row = document.createElement('div');
+		row.style.cssText = 'margin: 8px 0';
+		const title = document.createElement('div');
+		title.textContent = label;
+		const line = document.createElement('div');
+		line.style.cssText = 'display: flex; gap: 6px; align-items: stretch';
+		const text = document.createElement('code');
+		text.textContent = value;
+		text.style.cssText = 'flex: 1; min-width: 0; padding: 4px 6px; user-select: text; word-break: break-all; background: var(--color-back)';
+		const button = document.createElement('button');
+		button.textContent = 'Copy';
+		button.style.cssText = 'min-width: 64px; flex-shrink: 0';
+		button.addEventListener('click', () => {
+			Clipbench.setText(value);
+			Blockbench.showQuickMessage('Copied', 1200);
+		});
+		line.append(text, button);
+		row.append(title, line);
+		return row;
+	}
+
+	function textLine(text, color) {
+		const paragraph = document.createElement('p');
+		paragraph.textContent = text;
+		if (color) paragraph.style.color = color;
+		return paragraph;
+	}
+
+	async function showStatusDialog() {
+		const port = status.port || Settings.get('mcp_port');
+		const url = `http://127.0.0.1:${port}/mcp`;
+		const key = getRemoteKey() || createRemoteKey();
+		const tunnel = await findTunnelAddress(port);
+		const log = document.createElement('pre');
+		log.textContent = status.log.join('\n') || 'None yet.';
+		log.style.cssText = 'user-select: text; max-height: 160px; overflow: auto';
+		const lines = [
+			status.server
+				? textLine(`Running at ${url}`, 'var(--color-confirm)')
+				: textLine(`Stopped${status.error ? ': ' + status.error : ''}`, 'var(--color-close)'),
+			copyRow('Claude Code', `claude mcp add --transport http blockbench ${url}`),
+			copyRow('ChatGPT, step 1: start the tunnel in a terminal', `ngrok http 127.0.0.1:${port}`),
+			copyRow(
+				tunnel ? 'ChatGPT, step 2: server URL to enter (tunnel found)' : 'ChatGPT, step 2: server URL to enter (start the tunnel and press Refresh)',
+				`${tunnel || 'https://YOUR-NGROK-DOMAIN'}/mcp?key=${key}`
+			),
+			textLine('Keep this URL secret: it gives access to Blockbench and your files. Close the tunnel when you finish.'),
+		];
+		if (scriptsAllowed()) {
+			lines.push(textLine('Warning: run_script is on, so anyone with this URL can run code on your computer.', 'var(--color-close)'));
+		}
+		lines.push(textLine('Recent AI activity:'), log);
+		const dialog = new Dialog({
 			id: 'mcp_status',
 			title: 'MCP Server',
-			width: 620,
-			lines: [
-				state,
-				'<p>Claude Code:</p>',
-				`<pre style="user-select:text;white-space:pre-wrap">claude mcp add --transport http blockbench ${url}</pre>`,
-				'<p>Recent AI activity:</p>',
-				`<pre style="user-select:text;max-height:220px;overflow:auto">${escape(status.log.join('\n') || 'None yet.')}</pre>`,
-			],
-			buttons: ['Copy URL', 'Restart server', 'dialog.close'],
-			cancelIndex: 2,
+			width: 680,
+			lines,
+			buttons: ['Refresh', 'New key', 'Restart server', 'dialog.close'],
+			cancelIndex: 3,
 			onButton(index) {
-				if (index === 0) navigator.clipboard.writeText(url);
-				if (index === 1) startServer();
+				if (index === 0 || index === 1) {
+					if (index === 1) {
+						if (!confirm('Create a new key? The current URL stops working, and you will need to update it in ChatGPT.')) return false;
+						createRemoteKey();
+					}
+					dialog.hide();
+					showStatusDialog();
+					return false;
+				}
+				if (index === 2) startServer();
 			},
-		}).show();
+		});
+		dialog.show();
 	}
 
 	const registered = [];

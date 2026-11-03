@@ -101,11 +101,11 @@ Działają wszystkie formaty dostępne w Twoim Blockbench, m.in.:
 
 ## Bezpieczeństwo
 
-- Serwer nasłuchuje tylko na `127.0.0.1` i odrzuca żądania z nagłówkiem `Origin` lub nieoczekiwanym `Host`, więc strony otwarte w przeglądarce nie mogą sterować Blockbench.
+- Serwer nasłuchuje tylko na `127.0.0.1` i odrzuca żądania z nagłówkiem `Origin` lub nieoczekiwanym `Host`, więc strony otwarte w przeglądarce nie mogą sterować Blockbench. Jedynym wyjątkiem jest żądanie z tajnym kluczem z `Tools > MCP Server`.
 - Serwer nie ma hasła. Może się z nim połączyć każdy program uruchomiony na Twoim komputerze.
 - Podłączony klient może czytać i zapisywać pliki pod podanymi ścieżkami, ale istniejący plik nadpisze tylko z `overwrite: true`.
 - `run_script` uruchamia dowolny JavaScript z dostępem do Twoich plików, dlatego jest domyślnie wyłączony. Włączaj ustawienie `MCP: Allow run_script` tylko wtedy, gdy ufasz podłączonemu klientowi.
-- Tunel, np. ngrok, wystawia serwer do internetu. Nie uruchamiaj go bez zabezpieczeń z [instrukcji dla ChatGPT](docs/chatgpt-ngrok.pl.md).
+- Tunel, np. ngrok, udostępnia serwer w internecie, a chroni go ten klucz. Każdy, kto ma pełny adres, dostaje opisany wyżej dostęp, więc przed użyciem tunelu przeczytaj [instrukcję dla ChatGPT](docs/chatgpt-ngrok.pl.md).
 
 Lukę w zabezpieczeniach zgłoś zgodnie z [SECURITY.md](SECURITY.md).
 

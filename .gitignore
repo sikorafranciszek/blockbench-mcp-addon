@@ -1,5 +1,4 @@
 node_modules/
 test/output/
 .claude/
-ngrok-policy.yml
 *.log

@@ -101,11 +101,11 @@ All formats in your Blockbench install work, including:
 
 ## Security
 
-- The server listens only on `127.0.0.1` and rejects requests that have an `Origin` header or an unexpected `Host`, so websites open in your browser cannot control Blockbench.
+- The server listens only on `127.0.0.1` and rejects requests that have an `Origin` header or an unexpected `Host`, so websites open in your browser cannot control Blockbench. The only exception is a request with the secret key from `Tools > MCP Server`.
 - There is no password. Any program running on your computer can connect.
 - Connected clients can read and write files at the paths they pass, but an existing file is only overwritten when the call sets `overwrite: true`.
 - `run_script` runs arbitrary JavaScript with access to your files, so it is off by default. Turn it on with the `MCP: Allow run_script` setting only if you trust the connected client.
-- A tunnel such as ngrok exposes the server to the internet. Do not run one without the protection in the [ChatGPT guide](docs/chatgpt-ngrok.md).
+- A tunnel such as ngrok makes the server reachable from the internet, protected by that key. Anyone with the full address has the access described above, so see the [ChatGPT guide](docs/chatgpt-ngrok.md) before using one.
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
